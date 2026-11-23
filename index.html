@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#05060a">
+  <meta name="description" content="Off-grid power planner: build a household load, size LiFePO4 batteries, an inverter and a solar array, and see runtime, surge checks and a system rating. Every preset is sourced.">
+  <title>OffGrid Power — Battery, solar &amp; loads</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%2305060a'/%3E%3Ccircle cx='8' cy='8' r='3' fill='%2338e0ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="obs">
+  <div class="shell">
+    <nav class="hubnav" aria-label="Tools">
+      <a class="hub-pill" href="https://velocitybench.com/"><span class="hub-dot" aria-hidden="true"></span>Tools Hub</a>
+      <span class="hub-here">Home Power Tools</span>
+    </nav>
+
+    <header class="top">
+      <p class="kicker">Battery, solar &amp; loads</p>
+      <h1>OffGrid Power</h1>
+      <p class="top-lede">Plan how to power a house when the grid is down. Enter what you need to run, the batteries, inverter and solar you want to test, and get runtime, a worst-month energy balance and a plain-English system rating. Every preset number is sourced.</p>
+    </header>
+
+    <nav class="secnav" aria-label="Sections">
+      <button type="button" data-sec="loads" class="is-on">Loads</button>
+      <button type="button" data-sec="equip">Equipment</button>
+      <button type="button" data-sec="results">Results</button>
+      <button type="button" data-sec="sizer">Sizer</button>
+      <button type="button" data-sec="compare">Save &amp; compare</button>
+      <button type="button" data-sec="how">How we calculate</button>
+    </nav>
+
+    <main>
+      <section class="card" id="sec-loads" aria-labelledby="loads-h">
+        <div class="card-head"><h2 id="loads-h"><span class="step-n">1</span>Load builder</h2><p class="card-sub">Add household and prepper loads. Every watt figure is cited; hours you can edit.</p></div>
+        <p class="mini-h" id="cat-lbl">Category</p>
+        <div class="chips-row" id="cats" role="tablist" aria-labelledby="cat-lbl"></div>
+        <p class="mini-h">Add a preset</p>
+        <div class="preset-grid" id="presets"></div>
+        <div class="btn-row"><button type="button" class="btn" id="add-custom">Add a custom item</button></div>
+        <div class="readout" id="load-tot"></div>
+        <p class="hint" id="load-hint"></p>
+        <p class="mini-h">Your loads</p>
+        <div id="load-list"></div>
+      </section>
+
+      <section class="card" id="sec-equip" hidden aria-labelledby="equip-h">
+        <div class="card-head"><h2 id="equip-h"><span class="step-n">2</span>Equipment</h2><p class="card-sub">Enter the pack, inverter, array and controller you want to test. Starter values are labeled — replace them with your nameplates.</p></div>
+
+        <h3 class="sub-h">Battery</h3>
+        <p class="mini-h" id="chem-lbl">Chemistry</p>
+        <div class="seg" id="chem" role="radiogroup" aria-labelledby="chem-lbl"></div>
+        <p class="hint" id="chem-note"></p>
+        <p class="mini-h" id="vnom-lbl">Nominal voltage of one battery</p>
+        <div class="seg" id="vnom" role="radiogroup" aria-labelledby="vnom-lbl">
+          <button type="button" data-v="12">12 V</button>
+          <button type="button" data-v="24">24 V</button>
+          <button type="button" data-v="48">48 V</button>
+        </div>
+        <div class="num-grid" id="bat-grid"></div>
+        <div class="readout" id="bat-read"></div>
+
+        <h3 class="sub-h">Inverter</h3>
+        <div class="num-grid" id="inv-grid"></div>
+        <p class="mini-h" id="wave-lbl">Waveform</p>
+        <div class="seg" id="wave" role="radiogroup" aria-labelledby="wave-lbl">
+          <button type="button" data-v="pure">Pure sine</button>
+          <button type="button" data-v="modified">Modified sine</button>
+        </div>
+        <p class="mini-h" id="split-lbl">Output</p>
+        <div class="seg" id="split" role="radiogroup" aria-labelledby="split-lbl">
+          <button type="button" data-v="0">120 V</button>
+          <button type="button" data-v="1">Split-phase 120/240 V</button>
+        </div>
+        <p class="hint">Efficiency is a single planning figure (CEC or a mid-load datasheet value). A real inverter's curve varies with load — enter yours. Idle is the published zero-load draw.</p>
+
+        <h3 class="sub-h">Solar array</h3>
+        <p class="mini-h">Location (NREL 1961–1990 monthly PSH, south-facing fixed flat-plate)</p>
+        <div class="chips-row" id="quick-cities"></div>
+        <label class="lbl" for="city-q">Search 239 U.S. stations</label>
+        <div class="field"><input id="city-q" type="text" autocomplete="off" spellcheck="false" placeholder="City or state"></div>
+        <ul class="city-list" id="city-list" hidden></ul>
+        <p class="hint" id="city-src"></p>
+        <p class="mini-h" id="tilt-lbl">Array tilt</p>
+        <div class="seg" id="tilt" role="radiogroup" aria-labelledby="tilt-lbl">
+          <button type="button" data-v="0">Horizontal</button>
+          <button type="button" data-v="lat-15">Latitude − 15°</button>
+          <button type="button" data-v="lat">Latitude</button>
+          <button type="button" data-v="lat+15">Latitude + 15°</button>
+          <button type="button" data-v="90">Vertical</button>
+        </div>
+        <div class="num-grid" id="pv-grid"></div>
+        <p class="hint">Module Voc, Isc and the temperature coefficient come from your panel's label or datasheet. Leave them blank and string-voltage / PWM current checks stay undone rather than guessed.</p>
+
+        <h3 class="sub-h">Charge controller</h3>
+        <p class="mini-h" id="cc-lbl">Type</p>
+        <div class="seg" id="cc-type" role="radiogroup" aria-labelledby="cc-lbl">
+          <button type="button" data-v="mppt">MPPT</button>
+          <button type="button" data-v="pwm">PWM</button>
+        </div>
+        <div class="num-grid" id="cc-grid"></div>
+
+        <h3 class="sub-h">Optional generator + charger</h3>
+        <div class="num-grid" id="gen-grid"></div>
+        <p class="hint">Fuel use is shown only if you enter a sourced figure (for example a Honda manual gallons/hour). This tool does not invent a fuel curve.</p>
+      </section>
+
+      <section class="card" id="sec-results" hidden aria-labelledby="res-h">
+        <div class="card-head"><h2 id="res-h"><span class="step-n">3</span>Results</h2><p class="card-sub">Runtime, solar vs load, surge, wiring and a 0–100 rating.</p></div>
+        <div class="score-box" id="score-box"></div>
+        <ul class="check-list" id="checks"></ul>
+        <div class="readout" id="res-tot"></div>
+        <h3 class="sub-h">Runtime</h3>
+        <div class="tbl-wrap"><table class="tbl" id="run-tbl"></table></div>
+        <h3 class="sub-h">Daily solar harvest by month</h3>
+        <div class="chart" id="month-chart"></div>
+        <div class="tbl-wrap"><table class="tbl" id="month-tbl"></table></div>
+        <h3 class="sub-h">Battery state of charge</h3>
+        <p class="hint" id="soc-hint"></p>
+        <div class="chart" id="soc-chart"></div>
+        <h3 class="sub-h">Can the inverter start each load?</h3>
+        <div class="tbl-wrap"><table class="tbl" id="surge-tbl"></table></div>
+        <h3 class="sub-h">DC current, wire and fuse</h3>
+        <div class="readout" id="wire-read"></div>
+        <p class="hint" id="wire-hint"></p>
+        <h3 class="sub-h">12 V, 24 V or 48 V?</h3>
+        <p class="hint" id="volt-hint"></p>
+        <div class="tbl-wrap"><table class="tbl" id="volt-tbl"></table></div>
+      </section>
+
+      <section class="card" id="sec-sizer" hidden aria-labelledby="siz-h">
+        <div class="card-head"><h2 id="siz-h"><span class="step-n">4</span>Optimal setup</h2><p class="card-sub">From your loads, location and target days of autonomy, three sized tiers with documented margins.</p></div>
+        <div class="num-grid" id="siz-grid"></div>
+        <p class="hint">Minimum meets the worst-month energy balance and the target days exactly. Recommended multiplies energy (battery and array) by 1.25 — the same 125% figure used as a continuous-current multiplier in the NEC, offered here only as a planning margin, not a code requirement on kilowatt-hours. Comfortable uses 1.50, also a planning margin only.</p>
+        <div class="tier-row" id="tiers"></div>
+      </section>
+
+      <section class="card" id="sec-compare" hidden aria-labelledby="cmp-h">
+        <div class="card-head"><h2 id="cmp-h"><span class="step-n">5</span>Save &amp; compare</h2><p class="card-sub">Up to a few setups, kept only in this browser. Export or import a JSON file — no network.</p></div>
+        <div class="num-grid one">
+          <div class="num-cell span2">
+            <label class="lbl" for="save-name">Name this setup</label>
+            <div class="field"><input id="save-name" type="text" maxlength="40" placeholder="Cabin 48 V" autocomplete="off"></div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-primary" id="save-btn">Save in this browser</button>
+          <button type="button" class="btn" id="export-btn">Export JSON</button>
+          <label class="btn" for="import-file">Import JSON<input id="import-file" type="file" accept=".json,application/json" class="sr"></label>
+        </div>
+        <p class="hint" id="save-msg"></p>
+        <p class="mini-h">Saved setups (pick 2 or 3 to compare)</p>
+        <div class="compare-picks" id="saved-list"></div>
+        <div class="tbl-wrap" id="cmp-tbl-wrap"></div>
+      </section>
+
+      <section class="card" id="sec-how" hidden aria-labelledby="how-h">
+        <div class="card-head"><h2 id="how-h">How we calculate</h2><p class="card-sub">The formulas, and what is a fact versus a planning assumption.</p></div>
+        <p class="disc">These results are estimates for planning only. They are not a design, a permit package or a substitute for the National Electrical Code, local code or manufacturer instructions. Use a licensed electrician for any grid or house tie-in, and size equipment from nameplates and the edition of the NEC your inspector enforces.</p>
+        <ul class="conv-notes">
+          <li><b>Daily watt-hours (AC):</b> qty × running watts × hours/day × duty cycle. Duty is the fraction of those hours the device actually draws running watts. DOE / VCE: a refrigerator plugged in all day typically runs about one-third of the time, so duty = 1/3 and hours = 24.</li>
+          <li><b>Peak running watts:</b> the sum of running watts of every item marked “on at the same time.”</li>
+          <li><b>Peak surge watts:</b> for each item, the simultaneous running watts of the others plus that item's starting watts; then take the largest. Same idea as Honda's and Generac's “add running watts, then add the single largest extra starting amount.”</li>
+          <li><b>Battery energy:</b> Wh = V<sub>nom</sub> × Ah × batteries in series × parallels. Usable Wh = that × depth of discharge × temperature factor. Series raises voltage; parallel raises amp-hours.</li>
+          <li><b>Runtime:</b> hours = usable Wh ÷ (AC load / η<sub>inverter</sub> + idle watts). The inverter idle draw is included as a DC-side constant.</li>
+          <li><b>Solar harvest (DC bus, Wh/day):</b> array watts × PSH × derate × η<sub>controller</sub>. PSH is monthly average daily irradiation in kWh/m²/day on a south-facing fixed flat-plate at the chosen tilt, from NREL/TP-463-5607 (1961–1990). Derate defaults to 0.86, NREL PVWatts' default 14% DC system losses (soiling, shading, mismatch, wiring, connections, LID, nameplate, availability). Inverter efficiency is applied separately when energy is used as AC.</li>
+          <li><b>Worst-month balance:</b> harvest in the lowest-PSH month minus the DC energy needed for the day's AC load (load / η + idle × 24).</li>
+          <li><b>Open-circuit voltage in the cold:</b> two methods. Manufacturer: Voc<sub>cold</sub> = Voc<sub>STC</sub> × [1 + (β/100) × (T<sub>cold</sub> − 25°C)], with β in %/°C from the module label. NEC Table 690.7(A): Voc<sub>cold</sub> = Voc<sub>STC</sub> × C<sub>v</sub> for the ambient-temperature band (UMD Extension EB-2023-0676 Table 3, excerpted from the 2023 NEC). String voltage = module Voc<sub>cold</sub> × modules in series. Both must stay at or under the controller's maximum voltage.</li>
+          <li><b>Controller current:</b> PWM uses I<sub>sc</sub> × parallel strings × 1.25 (NEC 690.8(A) style). MPPT charge current ≈ (array watts × η<sub>controller</sub>) / battery voltage.</li>
+          <li><b>Inverter DC current:</b> I = (P<sub>AC</sub> / η + idle) / V<sub>battery</sub>. A 125% factor is applied for continuous-current comparisons with BMS and wire (NEC 690.8 / 215.3 style).</li>
+          <li><b>Voltage drop:</b> V<sub>drop</sub> = I × R × 2 × (one-way feet) / 1,000, with R in ohms per 1,000 ft from NEC Chapter 9 Table 8 (uncoated copper, stranded, 75 °C). Percent drop is that voltage divided by battery voltage. A 3% planning target is the NEC 210.19(A) informational note on branch-circuit drop — a note, not a mandatory limit.</li>
+          <li><b>Wire and fuse suggestion:</b> pick the smallest 75 °C copper size in Table 310.16 whose ampacity is at least 125% of current and whose drop is at most 3%. Suggest the next standard fuse size in NEC 240.6(A) that is at least 125% of current and no larger than the wire's ampacity. This is a suggestion. Battery cable, 90 °C ratings, bundling and temperature correction can change the answer; a licensed electrician applies the adopted code.</li>
+          <li><b>C-rate:</b> continuous DC current ÷ pack amp-hours. Compared with 1 C for LiFePO4 (e.g. a 100 Ah pack with a 100 A continuous BMS) and 0.2 C as a cautious lead-acid planning cap — edit if your manual differs. These caps are typical manufacturer practice, not a code table.</li>
+          <li><b>12 / 24 / 48 V:</b> the lowest of those three voltages at which 125% of continuous inverter DC current is within one 4/0 AWG 75 °C copper conductor (230 A, Table 310.16) and the voltage drop on your one-way run with 4/0 (0.0608 Ω/kft) is ≤ 3%. If none qualify, 48 V is still listed as the best of the three.</li>
+          <li><b>SOC chart:</b> the pack starts full. Each hour, solar is added and the load is subtracted on the DC bus. Extra solar after the pack is full is curtailed; a shortfall shows as a deficit and SOC = 0. Daylight length uses Cooper's 1969 declination, δ = 23.45° × sin(360° × (284 + n) / 365), and day length 2 ω<sub>s</sub> / 15 with ω<sub>s</sub> = arccos(−tan φ tan δ), at mid-month, ignoring refraction. Irradiance is a half-sine between sunrise and sunset scaled so the day's integral equals that month's PSH. Always-on load energy is spread evenly over 24 hours; items not marked simultaneous are placed in a 17:00–21:00 window — a planning assumption, not a measured household profile.</li>
+          <li><b>Rating (0–100):</b> start at 100. Each fail deducts 18, each warn deducts 8, never below 0. The checks and those deductions are listed on the Results page so the score is not a black box.</li>
+        </ul>
+        <h3 class="sub-h">Sources</h3>
+        <ul class="src-list" id="src-list"></ul>
+        <h3 class="sub-h">What is flagged or unverified</h3>
+        <ul class="src-list" id="flag-list"></ul>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <strong>Created by Jorge Guerra</strong>
+      <p class="footer-note">Works offline, including from a file. No tracking, no cookies, no network requests. Saved setups stay in this browser unless you export them.</p>
+    </footer>
+  </div>
+
+  <script src="js/psh.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/math.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
