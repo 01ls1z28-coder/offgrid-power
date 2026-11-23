@@ -202,6 +202,16 @@ eq(M.nextFuse(15), 15, "fuse 15");
   eq(D.loadById("cpap-hum").runW, 22, "AirSense 10 + humidifier 22 W");
   eq(D.loadById("well-1").runW, 1000, "Honda 1 hp induction 1,000 W running");
   eq(D.loadById("well-1").surgeW, 3000, "Honda 1 hp induction 3,000 W starting");
+  eq(D.loadById("gateway-iad").runW, 14.69, "SNE VA 2024 IAD weighted average 14.69 W");
+  eq(D.loadById("router-lne").runW, 8.45, "SNE VA 2024 LNE weighted average 8.45 W");
+  eq(D.loadById("phone-apple20").runW, 20, "Apple 20 W USB-C rated output");
+  eq(D.loadById("minisplit-gl09").runW, 585, "Mitsubishi GL09NA cooling rated 585 W");
+  eq(D.loadById("minisplit-gl09").surgeW, 7.7 * 230, "GL09NA LRA 7.7 A × 230 V", 1e-12);
+  eq(D.loadById("pellet-accentra2").runW, 255, "Harman Accentra-2 normal run 255 W");
+  eq(D.loadById("pellet-accentra2").surgeW, 440, "Harman Accentra-2 maximum 440 W");
+  eq(D.loadById("o2-simplygo").runW, 120, "SimplyGo 120 W not charging");
+  eq(D.loadById("o2-simplygo").surgeW, 150, "SimplyGo 150 W while charging");
+  ok(!D.loadById("router") && !D.loadById("phone"), "unverified router/phone placeholders are gone");
 })();
 
 console.log("PASS " + pass + "  FAIL " + fail);

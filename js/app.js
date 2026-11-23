@@ -817,7 +817,11 @@
     f("Hours/day on most presets are starter values you should edit (exceptions: the DOE kettle example of about 1 hour, and 24-hour always-on devices). Each flagged item says so next to the load.");
     f("Duty 1/3 is the DOE/VCE refrigerator rule. Applying it to a freezer is labeled as a starting estimate.");
     f("Well-pump watts are Honda's generic capacitor-start induction-motor table, not a named pump. Enter nameplate amps × volts for your well.");
-    f("Router (15 W) and phone charger (20 W) are unverified placeholders — there is no figure in the DOE or Honda tables used here. Enter the adapter label.");
+    f("ISP gateway 14.69 W and standalone Wi-Fi router 8.45 W are 2024 U.S. SNE Voluntary Agreement volume-weighted ready-state averages (Table 2), not a named box — enter your adapter or the Appendix A row if you have it.");
+    f("The Apple 20 W USB-C charger preset is the official USB-PD output (9 V × 2.22 A), not a measured AC input. Apple does not publish wall-draw watts.");
+    f("Mitsubishi MSZ/MUZ-GL09NA cooling rated input is 585 W (range 240–1,050 W); heating at 47 °F is 720 W. Surge uses published LRA 7.7 A × 230 V.");
+    f("Harman Accentra-2: 255 W normal run, 340 W start cycle, 440 W published maximum. SimplyGo: 120 W not charging, 150 W charging.");
+    f("Inogen portable concentrators are omitted: official G5 manuals list the AC adapter as 100–240 V, 2.0–1.0 A max and 24 V / 5.0 A output, but not a running wattage by setting, so no Inogen preset is shipped.");
     f("LED 10 W is the common 60 W-replacement class, not a DOE table entry.");
     f("Honda and DOE disagree on some items (laptop 200–250 W vs 50 W; washer 1,200 W vs 350–500 W). Both presets are offered; enter the nameplate.");
     f("Recommended / Comfortable sizer margins (1.25× and 1.50×) are planning margins, not a code requirement on kilowatt-hours.");
@@ -834,7 +838,11 @@
     if (!$("sec-sizer").hidden) renderSizer();
   }
 
-  /* first paint */
-  $("save-name").value = S.saveName;
-  renderAll();
+  /* first paint, then reveal (avoids CLS while grids hydrate) */
+  try {
+    $("save-name").value = S.saveName;
+    renderAll();
+  } finally {
+    document.documentElement.classList.add("ready");
+  }
 })();
