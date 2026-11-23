@@ -154,45 +154,134 @@
     return cell;
   }
 
+  function renderQuickStart() {
+    var box = $("quick-start");
+    if (!box) return;
+    box.textContent = "";
+    D.SCENARIOS.forEach(function (sc) {
+      var b = el("button", "chip-btn", sc.name); b.type = "button";
+      b.setAttribute("title", sc.blurb);
+      b.addEventListener("click", function () { applyScenario(sc); });
+      box.appendChild(b);
+    });
+  }
+  function ceilStep(x, step, floor) {
+    var n = Math.ceil((+x || 0) / step - 1e-12) * step;
+    if (floor && n < floor) n = floor;
+    return n;
+  }
+  function sizeCurrent(items) {
+    var t = M.loadTotals(items);
+    var st = P.byId(S.stationId) || P.byId(94846);
+    var row = st ? (st.psh[S.tilt] || st.psh.lat) : null;
+    var psh = row ? Math.min.apply(null, row) : (parseNum(S.pshManual) || 2.5);
+    return {
+      t: t,
+      z: M.sizeSystem({
+        dailyAcWh: t.dailyWh, peakRun: t.peakRun, maxItemRun: t.maxItemRun, peakSurge: t.peakSurge,
+        pshWorst: psh, derate: S.derate, etaCc: S.etaCc, etaInv: S.etaInv, idleW: S.idleW,
+        dod: S.dod, tempDerate: S.tempDerate, days: S.targetDays, packV: pack().v || 48
+      })
+    };
+  }
+  function applyTierToEquipment(tier, t, opts) {
+    opts = opts || {};
+    S.vNom = S.vNom || 12;
+    if (!S.ns) S.ns = 4;
+    S.np = 1;
+    S.ah = M.minimalAhForUsable(tier.usableWh, S.vNom, S.ns, S.np, S.dod, S.tempDerate);
+    S.arrayW = M.round(tier.arrayW, 0);
+    S.ccType = "mppt";
+    S.ccAmp = Math.ceil(tier.ccAmp - 1e-9);
+    if (opts.roundInverter) {
+      S.invCont = ceilStep(tier.invCont, 500, 1000);
+      S.invSurge = ceilStep(Math.max(tier.invSurge, t.peakSurge), 500, S.invCont);
+    } else {
+      S.invCont = M.round(tier.invCont, 0);
+      S.invSurge = M.round(Math.max(tier.invSurge, t.peakSurge), 0);
+    }
+    var iDc = M.dcAmps(Math.max(t.peakRun, S.invCont, 1), pack().v, S.etaInv, S.idleW);
+    var needBms = Math.ceil(M.withContinuousFactor(iDc) - 1e-9);
+    if (!S.bmsCont || S.bmsCont < needBms) S.bmsCont = needBms;
+    if (!S.bmsPeak || S.bmsPeak < S.bmsCont * 2) S.bmsPeak = S.bmsCont * 2;
+    if (S.items.some(function (it) { return it.volts === 240; })) S.split = 1;
+  }
+  function applyScenario(sc) {
+    S.items = sc.loads.map(function (L) {
+      var p = D.loadById(L.id);
+      var it = {
+        uid: uid(), id: p.id, name: p.name, qty: L.qty || 1,
+        runW: p.runW, surgeW: p.surgeW, hours: p.hours, duty: p.duty, sim: p.sim,
+        volts: p.volts, src: p.src, srcId: p.id, note: p.note, flag: p.flag
+      };
+      return it;
+    });
+    S.stationId = 94846;
+    S.tilt = "lat";
+    S.pshManual = "";
+    S.chem = "lifepo4"; S.dod = 0.8; S.rte = 0.95; S.tempDerate = 1;
+    S.vNom = 12; S.ns = 4; S.np = 1;
+    S.targetDays = 2; S.etaInv = 0.93; S.idleW = 20; S.etaCc = 0.98; S.derate = 0.86;
+    S.wave = "pure"; S.split = 0; S.wireFt = 10;
+    var sized = sizeCurrent(S.items);
+    applyTierToEquipment(sized.z.rec, sized.t, { roundInverter: true });
+    S.saveName = sc.name;
+    $("save-name").value = sc.name;
+    $("qs-hint").textContent = sc.blurb + " Recommended-tier equipment for Chicago, latitude tilt, 2 days of autonomy. Module Voc is blank, so the cold-voltage check warns. Open Results to see the rating.";
+    renderAll();
+    showSec("loads");
+  }
+
   function renderLoads() {
     var box = $("load-list"); box.textContent = "";
-    if (!S.items.length) box.appendChild(el("p", "hint", "No loads yet. Add presets above, or a custom item. Totals stay at zero until you do."));
+    if (!S.items.length) box.appendChild(el("p", "hint", "No loads yet. Pick a quick-start, add presets above, or a custom item. Totals stay at zero until you do."));
     S.items.forEach(function (it, idx) {
       var card = el("div", "load-card");
       var top = el("div", "load-top");
       var left = el("div");
-      var title = it.custom ? null : el("h3", "", it.name);
       if (it.custom) {
         var nf = el("div", "field"); var ni = el("input"); ni.type = "text"; ni.value = it.name; ni.setAttribute("aria-label", "Item name");
         ni.addEventListener("change", function () { it.name = ni.value; });
         nf.appendChild(ni); left.appendChild(nf);
-      } else left.appendChild(title);
+      } else left.appendChild(el("h3", "", it.name));
       top.appendChild(left);
       var rm = el("button", "icon-x", "×"); rm.type = "button"; rm.setAttribute("aria-label", "Remove " + it.name);
       rm.addEventListener("click", function () { S.items.splice(idx, 1); renderLoads(); });
       top.appendChild(rm);
       card.appendChild(top);
-      var grid = el("div", "num-grid");
-      grid.appendChild(field("Quantity", it.qty, "×", function (v) { it.qty = Math.max(1, v || 1); renderLoadTot(); }));
-      grid.appendChild(field("Running", it.runW, "W", function (v) { it.runW = v || 0; renderLoadTot(); }));
-      grid.appendChild(field("Starting / surge", it.surgeW, "W", function (v) { it.surgeW = v == null ? it.runW : v; renderLoadTot(); }));
-      grid.appendChild(field("Hours / day", it.hours, "h", function (v) { it.hours = v || 0; renderLoadTot(); }, { flag: !!it.flag, hint: it.flag && /hour|h\/day|starter/i.test(it.flag) ? it.flag : "" }));
-      grid.appendChild(field("Duty cycle", M.round(it.duty, 3), "×", function (v) { it.duty = M.clamp(v == null ? 1 : v, 0, 1); renderLoadTot(); }));
+      var grid = el("div", "load-row");
+      grid.appendChild(field("Qty", it.qty, "×", function (v) { it.qty = Math.max(1, v || 1); renderLoadTot(); }));
+      grid.appendChild(field("W", it.runW, "W", function (v) { it.runW = v || 0; renderLoadTot(); }));
+      grid.appendChild(field("Surge", it.surgeW, "W", function (v) { it.surgeW = v == null ? it.runW : v; renderLoadTot(); }));
+      grid.appendChild(field("h/day", it.hours, "h", function (v) { it.hours = v || 0; renderLoadTot(); }));
+      grid.appendChild(field("Duty", M.round(it.duty, 3), "×", function (v) { it.duty = M.clamp(v == null ? 1 : v, 0, 1); renderLoadTot(); }));
       var simc = el("div", "num-cell");
-      var lab = el("label", "toggle");
-      var cb = el("input"); cb.type = "checkbox"; cb.checked = !!it.sim;
-      cb.addEventListener("change", function () { it.sim = cb.checked; renderLoadTot(); });
-      lab.appendChild(cb); lab.appendChild(document.createTextNode("On at the same time (counts toward peak running watts)"));
-      simc.appendChild(el("span", "lbl", "Simultaneous")); simc.appendChild(lab);
+      var sim = el("button", "chip-btn sim-chip" + (it.sim ? " is-on" : ""), "Runs at the same time");
+      sim.type = "button";
+      sim.setAttribute("aria-pressed", it.sim ? "true" : "false");
+      sim.setAttribute("title", "Counts toward peak running watts when on");
+      sim.addEventListener("click", function () { it.sim = !it.sim; renderLoads(); });
+      simc.appendChild(el("span", "lbl", "Same time"));
+      simc.appendChild(sim);
       grid.appendChild(simc);
       card.appendChild(grid);
+      var actions = el("div", "load-actions");
+      var daily = M.itemDailyWh(it);
+      actions.appendChild(el("p", "hint", "Daily " + fmtWh(daily) + (it.volts === 240 ? " · 240 V" : "")));
+      var srcBtn = el("button", "chip-btn src-chip", "Source"); srcBtn.type = "button";
+      srcBtn.setAttribute("aria-expanded", "false");
       var src = "";
       if (it.src && D.SOURCES[it.src]) src = D.SOURCES[it.src].name;
       if (it.note) src = (src ? src + " " : "") + it.note;
       if (it.flag) src = (src ? src + " " : "") + "Flag: " + it.flag;
-      if (src) card.appendChild(el("p", "load-src", src));
-      var daily = M.itemDailyWh(it);
-      card.appendChild(el("p", "hint", "Daily " + fmtWh(daily) + (it.volts === 240 ? " · 240 V" : "")));
+      var srcP = el("p", "load-src"); srcP.hidden = true; srcP.textContent = src || "Custom item — enter the nameplate.";
+      srcBtn.addEventListener("click", function () {
+        srcP.hidden = !srcP.hidden;
+        srcBtn.setAttribute("aria-expanded", srcP.hidden ? "false" : "true");
+      });
+      actions.appendChild(srcBtn);
+      card.appendChild(actions);
+      card.appendChild(srcP);
       box.appendChild(card);
     });
     renderLoadTot();
@@ -202,7 +291,7 @@
     $("load-tot").innerHTML = "";
     function ro(k, v, s) { var d = el("div", "ro"); d.appendChild(el("span", "ro-k", k)); d.appendChild(el("span", "ro-v mono", v)); if (s) d.appendChild(el("span", "ro-s", s)); $("load-tot").appendChild(d); }
     ro("Daily energy", fmtWh(t.dailyWh), "Sum of running watts × hours × duty × quantity");
-    ro("Peak running", fmt(t.peakRun, 0) + " W", "Items marked simultaneous");
+    ro("Peak running", fmt(t.peakRun, 0) + " W", "Items marked “Runs at the same time”");
     ro("Peak surge", fmt(t.peakSurge, 0) + " W", t.worstStart ? ("Worst start: " + t.worstStart.name) : "");
     ro("Items", String(S.items.length), "");
     $("load-hint").textContent = t.dailyWh ? "" : "Add at least one load to see runtime and a size recommendation.";
@@ -362,6 +451,12 @@
     if (t.peakRun > S.invCont) checks.push({ level: "fail", text: "Inverter continuous rating " + fmt(S.invCont, 0) + " W is below peak running load " + fmt(t.peakRun, 0) + " W." });
     else if (t.peakRun > 0.9 * S.invCont) checks.push({ level: "warn", text: "Peak running load is " + fmt(100 * t.peakRun / Math.max(1, S.invCont), 0) + "% of the inverter's continuous rating." });
     else if (t.peakRun) checks.push({ level: "ok", text: "Peak running load " + fmt(t.peakRun, 0) + " W is within the inverter's " + fmt(S.invCont, 0) + " W continuous rating." });
+    if (t.maxItemRun > S.invCont) checks.push({ level: "fail", text: "Inverter continuous rating " + fmt(S.invCont, 0) + " W is below the largest single running load " + fmt(t.maxItemRun, 0) + " W." });
+    if (t.dailyWh > S.invCont * 24) checks.push({ level: "fail", text: "Inverter continuous rating × 24 h is " + fmtWh(S.invCont * 24) + ", below the day's " + fmtWh(t.dailyWh) + " AC load, so the inverter cannot pass a day's energy." });
+    else if (t.dailyWh && (t.dailyWh / 24) * M.DUTY_PEAK_FACTOR > S.invCont) checks.push({ level: "warn", text: "Continuous rating is below the duty-peak floor of (daily AC ÷ 24) × 1.25 = " + fmt((t.dailyWh / 24) * M.DUTY_PEAK_FACTOR, 0) + " W." });
+    M.heavyUnflagged(S.items).forEach(function (it) {
+      checks.push({ level: "warn", text: it.name + " runs " + fmt(it.hours * (it.duty == null ? 1 : it.duty), 1) + " equivalent hours/day but is not marked “Runs at the same time.” If it really overlaps the other loads, turn that chip on so peak running and the inverter size include it." });
+    });
     if (t.peakSurge > S.invSurge) checks.push({ level: "fail", text: "Inverter surge rating " + fmt(S.invSurge, 0) + " W is below peak surge " + fmt(t.peakSurge, 0) + " W. A motor (well pump, fridge, AC) may not start." });
     else if (t.peakSurge) checks.push({ level: "ok", text: "Peak surge " + fmt(t.peakSurge, 0) + " W is within the inverter's " + fmt(S.invSurge, 0) + " W surge rating." });
     if (S.wave === "modified" && S.items.some(function (it) { return /pump|fridge|freezer|air conditioner|cpap|oxygen|furnace/i.test(it.name); })) {
@@ -450,16 +545,42 @@
     side.appendChild(chips);
     $("score-box").appendChild(n); $("score-box").appendChild(side);
     var ul = $("checks"); ul.textContent = "";
+    var oks = [];
     checks.forEach(function (c) {
+      if (c.level === "ok") { oks.push(c); return; }
       var li = el("li");
       li.appendChild(el("span", "tag " + c.level, c.level));
       li.appendChild(el("span", "", c.text));
       ul.appendChild(li);
     });
+    var foldOk = $("fold-ok");
+    if (!foldOk) {
+      foldOk = el("details", "fold"); foldOk.id = "fold-ok";
+      var sum = el("summary", "", "Passed checks");
+      var okUl = el("ul", "check-list"); okUl.id = "checks-ok";
+      foldOk.appendChild(sum); foldOk.appendChild(okUl);
+      ul.parentNode.insertBefore(foldOk, ul.nextSibling);
+    }
+    $("fold-ok").querySelector("summary").textContent = oks.length ? ("Passed checks (" + oks.length + ")") : "Passed checks";
+    $("fold-ok").hidden = !oks.length;
+    var okUl = $("checks-ok"); okUl.textContent = "";
+    oks.forEach(function (c) {
+      var li = el("li");
+      li.appendChild(el("span", "tag " + c.level, c.level));
+      li.appendChild(el("span", "", c.text));
+      okUl.appendChild(li);
+    });
 
-    $("res-tot").innerHTML = "";
     var dailyDc = t.dailyWh / Math.max(0.01, S.etaInv) + S.idleW * 24;
     var days = t.dailyWh ? p.usable / dailyDc : Infinity;
+    var allH = M.runtimeHours(p.usable, t.dailyWh ? t.dailyWh / 24 : 0, S.etaInv, S.idleW);
+    $("res-summary").innerHTML = "";
+    function so(k, v, s) { var d = el("div", "ro"); d.appendChild(el("span", "ro-k", k)); d.appendChild(el("span", "ro-v mono", v)); if (s) d.appendChild(el("span", "ro-s", s)); $("res-summary").appendChild(d); }
+    so("Runtime, whole set", fmtHrs(allH), "Average load including inverter idle");
+    so("Days of autonomy", t.dailyWh && isFinite(days) ? fmt(days, 1) + " days" : "—", "Usable battery ÷ daily DC need");
+    so("Daily AC load", fmtWh(t.dailyWh), "");
+    so("Peak running", fmt(t.peakRun, 0) + " W", "Items marked “Runs at the same time”");
+    $("res-tot").innerHTML = "";
     function ro(k, v, s, kind) { var d = el("div", "ro" + (kind ? " " + kind : "")); d.appendChild(el("span", "ro-k", k)); d.appendChild(el("span", "ro-v mono", v)); if (s) d.appendChild(el("span", "ro-s", s)); $("res-tot").appendChild(d); }
     ro("Usable battery", fmtKwh(p.usable), p.v + " V pack");
     ro("Daily AC load", fmtWh(t.dailyWh), "");
@@ -469,7 +590,6 @@
     /* runtime table */
     var rt = $("run-tbl"); rt.innerHTML = "<thead><tr><th>Load</th><th>W</th><th>Wh/d</th><th>Alone</th></tr></thead>";
     var tb = el("tbody");
-    var allH = M.runtimeHours(p.usable, t.dailyWh ? t.dailyWh / 24 : 0, S.etaInv, S.idleW);
     var tr0 = el("tr"); tr0.appendChild(el("th", "", "Whole set (average watts)")); tr0.appendChild(el("td", "mono", fmt(t.dailyWh / 24, 0))); tr0.appendChild(el("td", "mono", fmt(t.dailyWh, 0))); tr0.appendChild(el("td", "mono", fmtHrs(allH)));
     tb.appendChild(tr0);
     S.items.forEach(function (it) {
@@ -647,33 +767,35 @@
     g.appendChild(field("Days to plot on the SOC chart", S.simDays, "days", function (v) { S.simDays = Math.max(1, v || 1); }));
     var t = M.loadTotals(S.items), st = station(), row = pshMonth(st), w = row ? worstMonth(row) : null;
     var psh = w ? w.psh : parseNum(S.pshManual);
+    var ctx = $("siz-ctx"); ctx.innerHTML = "";
+    function cx(k, v, s) { var d = el("div", "ro"); d.appendChild(el("span", "ro-k", k)); d.appendChild(el("span", "ro-v mono", v)); if (s) d.appendChild(el("span", "ro-s", s)); ctx.appendChild(d); }
+    var dailyDcPreview = t.dailyWh / Math.max(0.01, S.etaInv) + S.idleW * 24;
+    cx("Daily AC", fmtWh(t.dailyWh), "From the load list");
+    cx("Daily DC", fmtWh(dailyDcPreview), "Load / η + idle × 24");
+    cx("Peak running", fmt(t.peakRun, 0) + " W", "Marked “Runs at the same time”");
+    cx("Peak surge", fmt(t.peakSurge, 0) + " W", t.worstStart ? ("Worst start: " + t.worstStart.name) : "");
     var box = $("tiers"); box.textContent = "";
     if (!t.dailyWh || !psh) {
       box.appendChild(el("p", "hint", "Add loads and pick a location (or enter a manual PSH) to size the pack and array."));
       return;
     }
-    var z = M.sizeSystem({ dailyAcWh: t.dailyWh, peakRun: t.peakRun, peakSurge: t.peakSurge, pshWorst: psh, derate: S.derate, etaCc: S.etaCc, etaInv: S.etaInv, idleW: S.idleW, dod: S.dod, tempDerate: S.tempDerate, days: S.targetDays });
+    var z = M.sizeSystem({ dailyAcWh: t.dailyWh, peakRun: t.peakRun, maxItemRun: t.maxItemRun, peakSurge: t.peakSurge, pshWorst: psh, derate: S.derate, etaCc: S.etaCc, etaInv: S.etaInv, idleW: S.idleW, dod: S.dod, tempDerate: S.tempDerate, days: S.targetDays, packV: pack().v || 48 });
     ["min","rec","comf"].forEach(function (k) {
       var tier = z[k], card = el("div", "tier");
       card.appendChild(el("h3", "", tier.name));
       card.appendChild(el("p", "hint", "Energy margin " + Math.round(tier.margin * 100) + "%"));
       var grid = el("div", "tier-grid");
       function cell(lab, val) { var c = el("div", "ro"); c.appendChild(el("span", "ro-k", lab)); c.appendChild(el("span", "ro-v mono", val)); grid.appendChild(c); }
-      cell("Battery", fmt(tier.batteryKwh, 2) + " kWh usable");
+      cell("Battery, usable", fmt(tier.usableKwh, 2) + " kWh");
+      cell("Battery, nameplate", fmt(tier.nameplateKwh, 2) + " kWh");
       cell("Array", fmt(tier.arrayW, 0) + " W STC");
+      cell("Controller, MPPT", fmt(tier.ccAmp, 1) + " A");
       cell("Inverter, continuous", fmt(tier.invCont, 0) + " W");
       cell("Inverter, surge", fmt(tier.invSurge, 0) + " W");
       card.appendChild(grid);
       var apply = el("button", "btn", "Apply this size to equipment"); apply.type = "button";
       apply.addEventListener("click", function () {
-        /* Represent usable kWh as a 48 V pack of 12 V 100 Ah blocks when possible; otherwise keep voltage and set Ah. */
-        var v = pack().v || 48;
-        var needWh = tier.batteryWh / Math.max(0.01, S.dod * S.tempDerate); /* nameplate */
-        var ah = needWh / v;
-        S.ah = M.round(ah / Math.max(1, S.np), 0);
-        S.arrayW = M.round(tier.arrayW, 0);
-        S.invCont = M.round(Math.max(tier.invCont, t.peakRun), 0);
-        S.invSurge = M.round(Math.max(tier.invSurge, t.peakSurge), 0);
+        applyTierToEquipment(tier, t, { roundInverter: false });
         showSec("equip");
       });
       card.appendChild(apply);
@@ -814,6 +936,9 @@
     });
     var fl = $("flag-list"); fl.textContent = "";
     function f(t) { fl.appendChild(el("li", "", t)); }
+    f("“Runs at the same time” defaults on for always-on or long-running loads (fridge, freezer, medical, gateway, lights, HVAC, well/sump, laptops and TVs) and off for short-cycle loads (microwave, kettle, coffee, dishwasher, range, washer, dryer, tools, phone charger, ham transmit).");
+    f("A warning appears if a load with four or more equivalent hours/day is left unmarked as simultaneous.");
+    f("Quick-start Recommended systems are sized for Chicago, latitude tilt, 2 days, LiFePO4 80% DoD at 48 V. Module Voc is left blank, so the cold-voltage check warns and a starter score may not be 100.");
     f("Hours/day on most presets are starter values you should edit (exceptions: the DOE kettle example of about 1 hour, and 24-hour always-on devices). Each flagged item says so next to the load.");
     f("Duty 1/3 is the DOE/VCE refrigerator rule. Applying it to a freezer is labeled as a starting estimate.");
     f("Well-pump watts are Honda's generic capacitor-start induction-motor table, not a named pump. Enter nameplate amps × volts for your well.");
@@ -832,7 +957,7 @@
   }
 
   function renderAll() {
-    renderCats(); renderPresets(); renderLoads(); renderEquip(); renderSaved(); renderSources();
+    renderQuickStart(); renderCats(); renderPresets(); renderLoads(); renderEquip(); renderSaved(); renderSources();
     /* results/sizer fill when visible */
     if (!$("sec-results").hidden) renderResults();
     if (!$("sec-sizer").hidden) renderSizer();

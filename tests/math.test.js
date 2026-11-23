@@ -87,21 +87,26 @@ eq(M.withContinuousFactor(100), 125, "125% continuous factor");
 })();
 
 /* 12. Sizer tiers. Daily 5,000 Wh AC, η 0.9, idle 0, DoD 0.8, temp 1, 2 days,
-   worst PSH 3, derate 0.86, η_cc 1.
+   worst PSH 3, derate 0.86, η_cc 1, pack 48 V, peak run 1,000 W, max item 1,000 W.
    dailyDc = 5000/0.9.
-   Min battery = dailyDc × 2 / 0.8.
+   Min usable = dailyDc × 2.  Min nameplate = usable / 0.8.
    Min array = dailyDc / (3 × 0.86).
-   Recommended × 1.25, comfortable × 1.50. */
+   Recommended × 1.25, comfortable × 1.50.
+   Inverter continuous floor = max(peak run, largest item, (5000/24)×1.25).
+   Here 1000 > 260.4, so min invCont = 1000, rec = 1250. */
 (function () {
-  var z = M.sizeSystem({ dailyAcWh: 5000, peakRun: 1000, peakSurge: 2000, pshWorst: 3, derate: 0.86, etaCc: 1, etaInv: 0.9, idleW: 0, dod: 0.8, tempDerate: 1, days: 2 });
+  var z = M.sizeSystem({ dailyAcWh: 5000, peakRun: 1000, maxItemRun: 1000, peakSurge: 2000, pshWorst: 3, derate: 0.86, etaCc: 1, etaInv: 0.9, idleW: 0, dod: 0.8, tempDerate: 1, days: 2, packV: 48 });
   var dailyDc = 5000 / 0.9;
   eq(z.dailyDc, dailyDc, "sizer daily DC", 1e-9);
-  eq(z.min.batteryWh, dailyDc * 2 / 0.8, "sizer min battery", 1e-9);
+  eq(z.min.usableWh, dailyDc * 2, "sizer min usable Wh (no DoD in this figure)", 1e-9);
+  eq(z.min.nameplateWh, dailyDc * 2 / 0.8, "sizer min nameplate Wh", 1e-9);
   eq(z.min.arrayW, dailyDc / (3 * 0.86), "sizer min array", 1e-9);
-  eq(z.rec.batteryWh, z.min.batteryWh * 1.25, "sizer recommended 1.25", 1e-9);
+  eq(z.rec.usableWh, z.min.usableWh * 1.25, "sizer recommended usable 1.25", 1e-9);
+  eq(z.rec.nameplateWh, z.min.nameplateWh * 1.25, "sizer recommended nameplate 1.25", 1e-9);
   eq(z.comf.arrayW, z.min.arrayW * 1.5, "sizer comfortable 1.50", 1e-9);
-  eq(z.min.invCont, 1000, "sizer min inverter = peak run");
-  eq(z.rec.invCont, 1250, "sizer recommended inverter 1.25 × peak");
+  eq(z.min.invCont, 1000, "sizer min inverter = peak run when that is the floor");
+  eq(z.rec.invCont, 1250, "sizer recommended inverter 1.25 × floor");
+  eq(z.min.ccAmp, z.min.arrayW * 1 / 48, "sizer MPPT A = array W / 48 V", 1e-9);
 })();
 
 /* 13. Rating deductions. */
@@ -212,6 +217,99 @@ eq(M.nextFuse(15), 15, "fuse 15");
   eq(D.loadById("o2-simplygo").runW, 120, "SimplyGo 120 W not charging");
   eq(D.loadById("o2-simplygo").surgeW, 150, "SimplyGo 150 W while charging");
   ok(!D.loadById("router") && !D.loadById("phone"), "unverified router/phone placeholders are gone");
+})();
+
+
+/* 22. Inverter continuous floor: average-draw × 1.25 can beat peak running.
+   2,400 Wh/day → 100 W average → 125 W duty-peak. Peak run 80, largest item 80. */
+(function () {
+  var inv = M.inverterContinuous({ dailyAcWh: 2400, peakRun: 80, maxItemRun: 80 });
+  eq(inv.avgW, 100, "average draw 2,400/24");
+  eq(inv.dutyPeakW, 125, "duty-peak 100 × 1.25");
+  eq(inv.invCont, 125, "floor is the duty-peak term");
+  var z = M.sizeSystem({ dailyAcWh: 2400, peakRun: 80, maxItemRun: 80, peakSurge: 200, pshWorst: 4, derate: 1, etaCc: 1, etaInv: 1, idleW: 0, dod: 1, tempDerate: 1, days: 1, packV: 48 });
+  eq(z.min.invCont, 125, "sizer min uses the duty-peak floor");
+  eq(z.rec.invCont, 125 * 1.25, "sizer rec multiplies the floor by 1.25", 1e-12);
+  ok(z.min.invCont * 24 >= 2400, "inverter continuous × 24 >= daily AC Wh");
+})();
+
+/* 23. Apply / Ah helpers: exact equality when Ah is continuous;
+   minimal integer Ah has usable >= target and one Ah less falls short. */
+(function () {
+  var target = 7680; /* 48 V 200 Ah × 0.80 */
+  var exact = M.ahExactForUsable(target, 12, 4, 1, 0.8, 1);
+  eq(exact, 200, "continuous Ah is 200");
+  eq(M.usableWh(12, exact, 4, 1, 0.8, 1), target, "continuous Ah meets usable exactly", 1e-9);
+  var odd = 7700;
+  var ah = M.minimalAhForUsable(odd, 12, 4, 1, 0.8, 1);
+  ok(M.usableWh(12, ah, 4, 1, 0.8, 1) + 1e-9 >= odd, "integer Ah usable >= target");
+  ok(M.usableWh(12, ah - 1, 4, 1, 0.8, 1) < odd, "one fewer Ah falls short — minimal");
+  /* Double-divide must not happen: nameplate/DoD is used once. */
+  var z = M.sizeSystem({ dailyAcWh: 5000, peakRun: 1000, maxItemRun: 1000, peakSurge: 2000, pshWorst: 3, derate: 0.86, etaCc: 1, etaInv: 0.9, idleW: 0, dod: 0.8, tempDerate: 1, days: 2, packV: 48 });
+  var ah2 = M.ahExactForUsable(z.min.usableWh, 12, 4, 1, 0.8, 1);
+  eq(M.usableWh(12, ah2, 4, 1, 0.8, 1), z.min.usableWh, "Apply with continuous Ah equals tier usable", 1e-6);
+  ok(Math.abs(M.usableWh(12, ah2, 4, 1, 0.8, 1) - z.min.nameplateWh) > 1000, "usable is not the nameplate (no double-count confusion)");
+})();
+
+/* 24. Default-set physical consistency after the new sim flags.
+   Same reference list as the before/after table, Chicago-ready defaults. */
+(function () {
+  function add(id, qty) {
+    var p = D.loadById(id);
+    return { id: p.id, name: p.name, qty: qty || 1, runW: p.runW, surgeW: p.surgeW, hours: p.hours, duty: p.duty, sim: p.sim };
+  }
+  var items = [add("fridge-es"), add("led-10", 6), add("gateway-iad"), add("phone-apple20"), add("cpap-hum"),
+    add("well-half"), add("microwave-1000"), add("kettle"), add("washer"), add("window-ac-10k"), add("laptop-doe")];
+  var t = M.loadTotals(items);
+  /* Window AC, well pump, laptop are now simultaneous; phone/microwave/kettle/washer are not. */
+  ok(D.loadById("window-ac-10k").sim && D.loadById("well-half").sim && D.loadById("laptop-doe").sim, "long-running items default to simultaneous");
+  ok(!D.loadById("kettle").sim && !D.loadById("microwave-1000").sim && !D.loadById("washer").sim && !D.loadById("phone-apple20").sim, "short-cycle items stay off");
+  var expectedPeak = 192 + 10*6 + 14.69 + 22 + 600 + 1500 + 50; /* no phone/microwave/kettle/washer */
+  eq(t.peakRun, expectedPeak, "default-set peak running after new sim flags", 1e-9);
+  ok(t.maxItemRun === 1500, "largest single running item is the 1,500 W window AC or kettle");
+  var z = M.sizeSystem({ dailyAcWh: t.dailyWh, peakRun: t.peakRun, maxItemRun: t.maxItemRun, peakSurge: t.peakSurge, pshWorst: 2.5, derate: 0.86, etaCc: 0.98, etaInv: 0.93, idleW: 20, dod: 0.8, tempDerate: 1, days: 2, packV: 48 });
+  ok(z.min.invCont * 24 + 1e-9 >= t.dailyWh, "default-set min inverter × 24 >= daily AC Wh");
+  ok(z.min.invCont + 1e-9 >= t.peakRun, "default-set min inverter >= peak running");
+  ok(z.min.invCont + 1e-9 >= t.maxItemRun, "default-set min inverter >= largest item");
+  ok(z.min.usableWh * 1.25 - z.rec.usableWh < 1e-6, "recommended usable is 1.25 × minimum");
+  var heavy = M.heavyUnflagged(items);
+  ok(heavy.length === 0, "default-set has no unflagged heavy-hour loads");
+  /* A laptop left unflagged at 8 h should warn. */
+  var clone = items.map(function (it) { return Object.assign({}, it); });
+  clone.filter(function (it) { return it.id === "laptop-doe"; })[0].sim = false;
+  ok(M.heavyUnflagged(clone).some(function (it) { return it.id === "laptop-doe"; }), "8 h laptop not marked simultaneous is a heavy-hour warning");
+})();
+
+/* 25. Rating fails when the inverter is below peak running. */
+(function () {
+  var checks = [
+    { level: "fail", text: "Inverter continuous rating 200 W is below peak running load 1,000 W." }
+  ];
+  var r = M.rateSystem(checks);
+  eq(r.score, 82, "one fail is 100 − 18");
+  eq(r.fails, 1, "fail counted");
+})();
+
+/* 26. Quick-start Recommended packs: integer Ah meets usable, inverter floor holds. */
+(function () {
+  function pack(loads) {
+    var items = loads.map(function (L) {
+      var p = D.loadById(L.id);
+      return { id: p.id, name: p.name, qty: L.qty, runW: p.runW, surgeW: p.surgeW, hours: p.hours, duty: p.duty, sim: p.sim };
+    });
+    var t = M.loadTotals(items);
+    var z = M.sizeSystem({ dailyAcWh: t.dailyWh, peakRun: t.peakRun, maxItemRun: t.maxItemRun, peakSurge: t.peakSurge, pshWorst: 2.5, derate: 0.86, etaCc: 0.98, etaInv: 0.93, idleW: 20, dod: 0.8, tempDerate: 1, days: 2, packV: 48 });
+    var ah = M.minimalAhForUsable(z.rec.usableWh, 12, 4, 1, 0.8, 1);
+    var usable = M.usableWh(12, ah, 4, 1, 0.8, 1);
+    return { t: t, z: z, ah: ah, usable: usable };
+  }
+  D.SCENARIOS.forEach(function (s) {
+    var r = pack(s.loads);
+    ok(r.usable + 1e-9 >= r.z.rec.usableWh, s.name + " integer Ah usable >= recommended target");
+    ok(M.usableWh(12, r.ah - 1, 4, 1, 0.8, 1) < r.z.rec.usableWh, s.name + " one fewer Ah falls short");
+    ok(r.z.rec.invCont * 24 + 1e-9 >= r.t.dailyWh, s.name + " rec inverter × 24 >= daily AC");
+    ok(r.z.rec.invCont + 1e-9 >= r.t.peakRun, s.name + " rec inverter >= peak running");
+  });
 })();
 
 console.log("PASS " + pass + "  FAIL " + fail);

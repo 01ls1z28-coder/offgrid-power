@@ -54,7 +54,9 @@
       if (extra > startExtra) startExtra = extra;
     }
     if (!items.length) surgePeak = 0;
-    return { dailyWh: dailyWh, peakRun: peakRun, peakSurge: surgePeak, startExtra: startExtra, worstStart: worst };
+    var maxItemRun = 0;
+    for (i = 0; i < items.length; i++) maxItemRun = Math.max(maxItemRun, itemRunW(items[i]));
+    return { dailyWh: dailyWh, peakRun: peakRun, peakSurge: surgePeak, startExtra: startExtra, worstStart: worst, maxItemRun: maxItemRun };
   }
 
   /* ---------- inverter path ---------- */
@@ -261,6 +263,13 @@
   var AMP_4_0 = 230;
   var R_4_0 = 0.0608;
   var CONT_FACTOR = 1.25;
+  /* Planning duty-peak factor on the 24 h average AC draw (daily Wh / 24).
+     Same 125% figure as the continuous-current multiplier, used here so the
+     inverter can cover a modest concentration of the day's energy above a flat
+     average. Not a code requirement. */
+  var DUTY_PEAK_FACTOR = 1.25;
+  /* Hours/day (× duty) at or above which a non-simultaneous load gets a warning. */
+  var HEAVY_HOURS = 4;
   function voltageOk(v, acW, eta, idleW, oneWayFt) {
     var i = dcAmps(acW, v, eta, idleW);
     var vd = voltageDropPct(i, oneWayFt, R_4_0, v);
@@ -277,31 +286,85 @@
   }
 
   /* ---------- sizer ---------- */
-  /* Minimum battery DC Wh = (daily AC Wh / η + idle × 24) × days / (DoD × temp).
+  /* Inverter continuous floor (watts) = max of:
+       1. peak running = sum of items marked simultaneous,
+       2. the largest single item's running watts (qty included),
+       3. (daily AC Wh / 24) × DUTY_PEAK_FACTOR (1.25).
+     A system that cannot pass (1) or (2), or whose continuous rating × 24 is
+     below the day's AC watt-hours, cannot serve the load as entered. */
+  function inverterContinuous(o) {
+    var peak = num(o.peakRun);
+    var largest = num(o.maxItemRun);
+    var avgW = num(o.dailyAcWh) / 24;
+    var factor = o.dutyPeakFactor == null ? DUTY_PEAK_FACTOR : num(o.dutyPeakFactor);
+    var peaked = avgW * factor;
+    return {
+      invCont: Math.max(peak, largest, peaked),
+      peakRun: peak, maxItemRun: largest, avgW: avgW,
+      dutyPeakW: peaked, factor: factor
+    };
+  }
+
+  function heavyUnflagged(items, hoursFloor) {
+    hoursFloor = hoursFloor == null ? HEAVY_HOURS : hoursFloor;
+    return (items || []).filter(function (it) {
+      return !it.sim && num(it.hours) * clamp(num(it.duty, 1), 0, 1) >= hoursFloor;
+    });
+  }
+
+  /* Exact series-unit Ah such that usableWh == target (continuous Ah). */
+  function ahExactForUsable(usableTarget, vNom, ns, np, dod, tempDerate) {
+    var den = num(vNom) * Math.max(1, num(ns, 1)) * Math.max(1, num(np, 1)) *
+      clamp(num(dod, 0.8), 0.01, 1) * clamp(num(tempDerate, 1), 0.01, 2);
+    if (den <= 0) return Infinity;
+    return num(usableTarget) / den;
+  }
+  /* Smallest integer Ah per series unit (given ns, np) with usable >= target. */
+  function minimalAhForUsable(usableTarget, vNom, ns, np, dod, tempDerate) {
+    var exact = ahExactForUsable(usableTarget, vNom, ns, np, dod, tempDerate);
+    if (!isFinite(exact) || exact <= 0) return 0;
+    var ah = Math.ceil(exact - 1e-9);
+    return ah < 1 ? 1 : ah;
+  }
+
+  /* Usable battery DC Wh = (daily AC Wh / η + idle × 24) × days × margin.
+     Nameplate Wh = usable / (DoD × temp). The two must be shown separately;
+     Apply uses nameplate only once (or picks integer Ah so usable >= target).
      Minimum array W = daily DC need / (worst-month PSH × derate × η_cc).
-     Inverter continuous = peak running; surge = peak surge.
-     Recommended uses a 1.25 energy margin (same 125% figure as NEC continuous-current
-     multipliers, offered as a planning margin only — not a code requirement on kWh).
-     Comfortable uses 1.50, likewise a planning margin, not a code requirement. */
+     Inverter continuous = inverterContinuous() × (1.00 / 1.25 / 1.50 by tier).
+     Surge = peak surge (simultaneous running + the largest extra start).
+     MPPT controller A = array W × η_cc / pack V.
+     Recommended margin 1.25 and comfortable 1.50 are planning margins, not a
+     code requirement on kilowatt-hours. */
   function sizeSystem(o) {
     var eta = clamp(num(o.etaInv, 0.93), 0.01, 1);
     var dailyDc = num(o.dailyAcWh) / eta + num(o.idleW) * 24;
     var denom = clamp(num(o.dod, 0.8), 0.01, 1) * clamp(num(o.tempDerate, 1), 0.01, 2);
     var days = Math.max(0.1, num(o.days, 1));
     var psh = Math.max(0.05, num(o.pshWorst));
-    var der = clamp(num(o.derate, 1), 0.01, 2) * clamp(num(o.etaCc, 1), 0.01, 1);
+    var etaCc = clamp(num(o.etaCc, 1), 0.01, 1);
+    var der = clamp(num(o.derate, 1), 0.01, 2) * etaCc;
+    var packV = Math.max(1, num(o.packV, 48));
+    var inv = inverterContinuous(o);
     function tier(margin, name) {
-      var batWh = dailyDc * days * margin / denom;
+      var usable = dailyDc * days * margin;
+      var nameplate = usable / denom;
       var arrayW = dailyDc * margin / (psh * der);
+      var invCont = inv.invCont * (name === "Minimum" ? 1 : margin);
       return {
         name: name, margin: margin,
-        batteryWh: batWh, batteryKwh: batWh / 1000,
+        usableWh: usable, usableKwh: usable / 1000,
+        nameplateWh: nameplate, nameplateKwh: nameplate / 1000,
         arrayW: arrayW,
-        invCont: num(o.peakRun) * (name === "Minimum" ? 1 : margin),
-        invSurge: num(o.peakSurge)
+        invCont: invCont,
+        invSurge: num(o.peakSurge),
+        ccAmp: arrayW * etaCc / packV
       };
     }
-    return { dailyDc: dailyDc, min: tier(1, "Minimum"), rec: tier(1.25, "Recommended"), comf: tier(1.5, "Comfortable") };
+    return {
+      dailyDc: dailyDc, inv: inv,
+      min: tier(1, "Minimum"), rec: tier(1.25, "Recommended"), comf: tier(1.5, "Comfortable")
+    };
   }
 
   /* ---------- rating 0–100 ---------- */
@@ -322,9 +385,12 @@
 
   var api = {
     MONTHS: MONTHS, MONTH_DAYS: MONTH_DAYS, MID_DOY: MID_DOY, NEC_6907A: NEC_6907A,
-    FUSE_SIZES: FUSE_SIZES, CONT_FACTOR: CONT_FACTOR, AMP_4_0: AMP_4_0, R_4_0: R_4_0,
+    FUSE_SIZES: FUSE_SIZES, CONT_FACTOR: CONT_FACTOR, DUTY_PEAK_FACTOR: DUTY_PEAK_FACTOR,
+    HEAVY_HOURS: HEAVY_HOURS, AMP_4_0: AMP_4_0, R_4_0: R_4_0,
     num: num, clamp: clamp, round: round,
     packV: packV, packAh: packAh, packWh: packWh, usableWh: usableWh,
+    inverterContinuous: inverterContinuous, heavyUnflagged: heavyUnflagged,
+    ahExactForUsable: ahExactForUsable, minimalAhForUsable: minimalAhForUsable,
     itemDailyWh: itemDailyWh, itemRunW: itemRunW, itemSurgeW: itemSurgeW, loadTotals: loadTotals,
     dcWatts: dcWatts, dcAmps: dcAmps, runtimeHours: runtimeHours,
     vocColdCoeff: vocColdCoeff, nec6907Factor: nec6907Factor, vocColdNEC: vocColdNEC, stringVoc: stringVoc,

@@ -36,6 +36,9 @@
     <main>
       <section class="card" id="sec-loads" aria-labelledby="loads-h">
         <div class="card-head"><h2 id="loads-h"><span class="step-n">1</span>Load builder</h2><p class="card-sub">Add household and prepper loads. Every watt figure is cited; hours you can edit.</p></div>
+        <p class="mini-h" id="qs-lbl">Quick start</p>
+        <div class="chips-row" id="quick-start" role="group" aria-labelledby="qs-lbl"></div>
+        <p class="hint" id="qs-hint">Three starter households. Each one loads a cited preset list and a Recommended-tier system sized for Chicago’s worst month — how that system is chosen is under How we calculate.</p>
         <p class="mini-h" id="cat-lbl">Category</p>
         <div class="chips-row" id="cats" role="tablist" aria-labelledby="cat-lbl"></div>
         <p class="mini-h">Add a preset</p>
@@ -109,32 +112,42 @@
       </section>
 
       <section class="card" id="sec-results" hidden aria-labelledby="res-h">
-        <div class="card-head"><h2 id="res-h"><span class="step-n">3</span>Results</h2><p class="card-sub">Runtime, solar vs load, surge, wiring and a 0–100 rating.</p></div>
+        <div class="card-head"><h2 id="res-h"><span class="step-n">3</span>Results</h2><p class="card-sub">A short summary first; the long tables are folded underneath.</p></div>
         <div class="score-box" id="score-box"></div>
+        <div class="readout" id="res-summary"></div>
         <ul class="check-list" id="checks"></ul>
-        <div class="readout" id="res-tot"></div>
-        <h3 class="sub-h">Runtime</h3>
-        <div class="tbl-wrap"><table class="tbl" id="run-tbl"></table></div>
-        <h3 class="sub-h">Daily solar harvest by month</h3>
-        <div class="chart" id="month-chart"></div>
-        <div class="tbl-wrap"><table class="tbl" id="month-tbl"></table></div>
-        <h3 class="sub-h">Battery state of charge</h3>
-        <p class="hint" id="soc-hint"></p>
-        <div class="chart" id="soc-chart"></div>
-        <h3 class="sub-h">Can the inverter start each load?</h3>
-        <div class="tbl-wrap"><table class="tbl" id="surge-tbl"></table></div>
-        <h3 class="sub-h">DC current, wire and fuse</h3>
-        <div class="readout" id="wire-read"></div>
-        <p class="hint" id="wire-hint"></p>
-        <h3 class="sub-h">12 V, 24 V or 48 V?</h3>
-        <p class="hint" id="volt-hint"></p>
-        <div class="tbl-wrap"><table class="tbl" id="volt-tbl"></table></div>
+        <details class="fold" id="fold-totals"><summary>Energy totals</summary>
+          <div class="readout" id="res-tot"></div>
+        </details>
+        <details class="fold" id="fold-runtime"><summary>Runtime by load</summary>
+          <div class="tbl-wrap"><table class="tbl" id="run-tbl"></table></div>
+        </details>
+        <details class="fold" id="fold-month"><summary>Daily solar harvest by month</summary>
+          <div class="chart" id="month-chart"></div>
+          <div class="tbl-wrap"><table class="tbl" id="month-tbl"></table></div>
+        </details>
+        <details class="fold" id="fold-soc"><summary>Battery state of charge</summary>
+          <p class="hint" id="soc-hint"></p>
+          <div class="chart" id="soc-chart"></div>
+        </details>
+        <details class="fold" id="fold-surge"><summary>Can the inverter start each load?</summary>
+          <div class="tbl-wrap"><table class="tbl" id="surge-tbl"></table></div>
+        </details>
+        <details class="fold" id="fold-wire"><summary>DC current, wire and fuse</summary>
+          <div class="readout" id="wire-read"></div>
+          <p class="hint" id="wire-hint"></p>
+        </details>
+        <details class="fold" id="fold-volt"><summary>12 V, 24 V or 48 V?</summary>
+          <p class="hint" id="volt-hint"></p>
+          <div class="tbl-wrap"><table class="tbl" id="volt-tbl"></table></div>
+        </details>
       </section>
 
       <section class="card" id="sec-sizer" hidden aria-labelledby="siz-h">
         <div class="card-head"><h2 id="siz-h"><span class="step-n">4</span>Optimal setup</h2><p class="card-sub">From your loads, location and target days of autonomy, three sized tiers with documented margins.</p></div>
+        <div class="readout" id="siz-ctx"></div>
         <div class="num-grid" id="siz-grid"></div>
-        <p class="hint">Minimum meets the worst-month energy balance and the target days exactly. Recommended multiplies energy (battery and array) by 1.25 — the same 125% figure used as a continuous-current multiplier in the NEC, offered here only as a planning margin, not a code requirement on kilowatt-hours. Comfortable uses 1.50, also a planning margin only.</p>
+        <p class="hint">Each tier lists usable battery energy (what the load can actually draw) and nameplate energy (usable ÷ DoD ÷ temperature factor). Apply uses nameplate only once. Minimum meets the worst-month energy balance and the target days exactly. Recommended multiplies energy (battery and array) and the inverter continuous floor by 1.25 — the same 125% figure used as a continuous-current multiplier in the NEC, offered here only as a planning margin, not a code requirement on kilowatt-hours. Comfortable uses 1.50, also a planning margin only. Inverter continuous is the maximum of simultaneous running watts, the largest single running item, and (daily AC Wh ÷ 24) × 1.25.</p>
         <div class="tier-row" id="tiers"></div>
       </section>
 
@@ -162,9 +175,11 @@
         <p class="disc">These results are estimates for planning only. They are not a design, a permit package or a substitute for the National Electrical Code, local code or manufacturer instructions. Use a licensed electrician for any grid or house tie-in, and size equipment from nameplates and the edition of the NEC your inspector enforces.</p>
         <ul class="conv-notes">
           <li><b>Daily watt-hours (AC):</b> qty × running watts × hours/day × duty cycle. Duty is the fraction of those hours the device actually draws running watts. DOE / VCE: a refrigerator plugged in all day typically runs about one-third of the time, so duty = 1/3 and hours = 24.</li>
-          <li><b>Peak running watts:</b> the sum of running watts of every item marked “on at the same time.”</li>
+          <li><b>Peak running watts:</b> the sum of running watts of every item marked “Runs at the same time.” Presets default on for always-on or long-running items (fridge, freezer, CPAP, oxygen concentrators, routers and gateways, lights, HVAC, well and sump pumps, laptops and TVs) and off only for short-cycle items (microwave, kettle, coffee maker, dishwasher, range, washer, dryer, power tools, garage opener, phone charger, ham transmit). A warning appears if a load with four or more hours/day × duty is left unmarked.</li>
           <li><b>Peak surge watts:</b> for each item, the simultaneous running watts of the others plus that item's starting watts; then take the largest. Same idea as Honda's and Generac's “add running watts, then add the single largest extra starting amount.”</li>
-          <li><b>Battery energy:</b> Wh = V<sub>nom</sub> × Ah × batteries in series × parallels. Usable Wh = that × depth of discharge × temperature factor. Series raises voltage; parallel raises amp-hours.</li>
+          <li><b>Battery energy:</b> nameplate Wh = V<sub>nom</sub> × Ah × batteries in series × parallels. Usable Wh = nameplate × depth of discharge × temperature factor. Series raises voltage; parallel raises amp-hours.</li>
+          <li><b>Sizer battery:</b> usable Wh = (daily AC Wh / η<sub>inverter</sub> + idle × 24) × days × margin. Nameplate Wh = usable ÷ (DoD × temperature factor). The two are shown separately. Apply sets integer amp-hours so usable is at least the tier’s usable target, and never divides by DoD twice. When Ah is treated as continuous, usable equals the target exactly.</li>
+          <li><b>Inverter continuous floor:</b> the maximum of (1) peak running watts, (2) the largest single item’s running watts, and (3) (daily AC Wh ÷ 24) × 1.25. The 1.25 is a planning duty-peak factor — the same 125% figure used as a continuous-current multiplier, used here so the inverter can cover a modest concentration of the day’s energy above a flat average. It is not a code requirement. Recommended and Comfortable multiply that floor by 1.25 and 1.50. A rating check fails if the inverter’s continuous rating is below peak running, below the largest item, or if continuous watts × 24 is below the day’s AC watt-hours.</li>
           <li><b>Runtime:</b> hours = usable Wh ÷ (AC load / η<sub>inverter</sub> + idle watts). The inverter idle draw is included as a DC-side constant.</li>
           <li><b>Solar harvest (DC bus, Wh/day):</b> array watts × PSH × derate × η<sub>controller</sub>. PSH is monthly average daily irradiation in kWh/m²/day on a south-facing fixed flat-plate at the chosen tilt, from NREL/TP-463-5607 (1961–1990). Derate defaults to 0.86, NREL PVWatts' default 14% DC system losses (soiling, shading, mismatch, wiring, connections, LID, nameplate, availability). Inverter efficiency is applied separately when energy is used as AC.</li>
           <li><b>Worst-month balance:</b> harvest in the lowest-PSH month minus the DC energy needed for the day's AC load (load / η + idle × 24).</li>
@@ -175,6 +190,7 @@
           <li><b>Wire and fuse suggestion:</b> pick the smallest 75 °C copper size in Table 310.16 whose ampacity is at least 125% of current and whose drop is at most 3%. Suggest the next standard fuse size in NEC 240.6(A) that is at least 125% of current and no larger than the wire's ampacity. This is a suggestion. Battery cable, 90 °C ratings, bundling and temperature correction can change the answer; a licensed electrician applies the adopted code.</li>
           <li><b>C-rate:</b> continuous DC current ÷ pack amp-hours. Compared with 1 C for LiFePO4 (e.g. a 100 Ah pack with a 100 A continuous BMS) and 0.2 C as a cautious lead-acid planning cap — edit if your manual differs. These caps are typical manufacturer practice, not a code table.</li>
           <li><b>12 / 24 / 48 V:</b> the lowest of those three voltages at which 125% of continuous inverter DC current is within one 4/0 AWG 75 °C copper conductor (230 A, Table 310.16) and the voltage drop on your one-way run with 4/0 (0.0608 Ω/kft) is ≤ 3%. If none qualify, 48 V is still listed as the best of the three.</li>
+          <li><b>Quick-start systems:</b> each chip loads its preset list, places the array in Chicago, IL (NREL station 94846, latitude tilt, December PSH 2.5 kWh/m²/day — a mid-continent winter stress case), and applies the Recommended tier: LiFePO4 at 80% DoD, 48 V (four 12 V units in series), 2 days of autonomy, default derate 0.86, η<sub>inverter</sub> 0.93, idle 20 W, η<sub>controller</sub> 0.98. Amp-hours are the smallest integer that meets the usable target. Array watts are rounded to 1 W; controller amps are rounded up to the next whole amp. Inverter continuous and surge are rounded up to the next 500 W, with a 1,000 W practical floor on continuous (a commercial house-use step, not a code rule). BMS continuous is set to at least 125% of inverter DC current. Module Voc is left blank, so the cold string-voltage check warns instead of failing — that is why a starter score may not be 100. 240 V loads (the mini-split, the well pump) switch the inverter to split-phase.</li>
           <li><b>SOC chart:</b> the pack starts full. Each hour, solar is added and the load is subtracted on the DC bus. Extra solar after the pack is full is curtailed; a shortfall shows as a deficit and SOC = 0. Daylight length uses Cooper's 1969 declination, δ = 23.45° × sin(360° × (284 + n) / 365), and day length 2 ω<sub>s</sub> / 15 with ω<sub>s</sub> = arccos(−tan φ tan δ), at mid-month, ignoring refraction. Irradiance is a half-sine between sunrise and sunset scaled so the day's integral equals that month's PSH. Always-on load energy is spread evenly over 24 hours; items not marked simultaneous are placed in a 17:00–21:00 window — a planning assumption, not a measured household profile.</li>
           <li><b>Rating (0–100):</b> start at 100. Each fail deducts 18, each warn deducts 8, never below 0. The checks and those deductions are listed on the Results page so the score is not a black box.</li>
         </ul>
